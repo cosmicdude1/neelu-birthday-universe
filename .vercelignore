@@ -1,0 +1,9 @@
+# Redundant root WhatsApp media files (the site uses normalized assets/ folder)
+WhatsApp*
+*.bat
+*.py
+*.tmp
+.git*
+README.md
+assets/music/README.txt
+

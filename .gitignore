@@ -1,0 +1,10 @@
+WhatsApp*
+*.bat
+*.py
+*.tmp
+*.zip
+.vercel
+.wrangler
+dist
+node_modules
+
