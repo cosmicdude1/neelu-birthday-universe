@@ -38,9 +38,9 @@ window.NEELU_CONFIG = {
     // Primary background music path (easily replaceable with any .mp3 or .aac in assets/music/)
     bgMusicPath: "assets/music/bg-music.aac",
     bgMusicTitle: "A Little Universe • Birthday Melody",
-    // Dedicated voice note for Scene 7
-    customAudioPath: "assets/audio/voice-or-music.aac",
-    customAudioTitle: "Neelu's Special Audio / Voice Note",
+    // Dedicated voice note for Scene 7 (right before the letter)
+    customAudioPath: "assets/audio/birthday wish by sahil.ogg",
+    customAudioTitle: "Special Voice Note for Neelu",
     ambientTrackTitle: "Celestial Lullaby (Ambient Chimes)",
     defaultVolume: 0.65,
     soundEffectsEnabled: true,

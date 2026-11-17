@@ -58,7 +58,7 @@ window.renderScene7Letter = function(container, onNext) {
           </button>
           <div class="voice-meta">
             <span class="voice-title">${audioCfg.customAudioTitle}</span>
-            <span class="voice-status" id="voiceStatus">Tap to listen while reading 🎧</span>
+            <span class="voice-status" id="voiceStatus">Tap to listen before reading 🎧</span>
           </div>
         </div>
         <div class="voice-waves" id="voiceWaves">
@@ -374,18 +374,12 @@ window.renderScene7Letter = function(container, onNext) {
   // ----------------------------------------------------
   // AUDIO VOICE NOTE INTEGRATION
   // ----------------------------------------------------
+  let hasStartedVoice = false;
+
   btnPlayVoice.addEventListener('click', () => {
     if (window.soundEngine) {
+      hasStartedVoice = true;
       window.soundEngine.toggleCustomAudio();
-      if (window.soundEngine.isPlayingCustomAudio) {
-        voiceIcon.textContent = '❚❚';
-        voiceStatus.textContent = 'Playing Neelu’s Audio Note 🎵';
-        voiceWaves.classList.add('playing');
-      } else {
-        voiceIcon.textContent = '▶';
-        voiceStatus.textContent = 'Paused • Tap to resume';
-        voiceWaves.classList.remove('playing');
-      }
     }
   });
 
@@ -393,9 +387,11 @@ window.renderScene7Letter = function(container, onNext) {
     if (e.detail) {
       if (e.detail.isPlayingCustom) {
         voiceIcon.textContent = '❚❚';
+        voiceStatus.textContent = 'Playing Special Voice Note for Neelu 🎙️';
         voiceWaves.classList.add('playing');
       } else {
         voiceIcon.textContent = '▶';
+        voiceStatus.textContent = hasStartedVoice ? 'Paused • Tap to resume' : 'Tap to listen before reading 🎧';
         voiceWaves.classList.remove('playing');
       }
     }

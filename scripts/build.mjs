@@ -77,7 +77,7 @@ const indexHtml = fs.readFileSync(path.join(distDir, 'index.html'), 'utf8');
 const configJs = fs.readFileSync(path.join(distDir, 'js', 'config.js'), 'utf8');
 
 const htmlRefs = [...indexHtml.matchAll(/(?:src|href)="(?!https?:\/\/|data:)([^"]+)"/g)].map((m) => m[1]);
-const assetRefs = [...new Set([...configJs.matchAll(/assets\/[a-zA-Z0-9_./-]+\.[a-zA-Z0-9]+/g)].map((m) => m[0]))];
+const assetRefs = [...new Set([...configJs.matchAll(/["'](assets\/[^"']+\.[a-zA-Z0-9]+)["']/g)].map((m) => m[1]))];
 
 for (const ref of [...htmlRefs, ...assetRefs]) {
   const distFile = path.join(distDir, ref);

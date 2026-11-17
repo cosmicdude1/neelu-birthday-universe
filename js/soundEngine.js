@@ -84,7 +84,8 @@ class SoundEngine {
 
       // Voice note player element
       this.customAudio = new Audio();
-      this.customAudio.src = window.NEELU_CONFIG?.audio?.customAudioPath || 'assets/audio/voice-or-music.aac';
+      const customPath = window.NEELU_CONFIG?.audio?.customAudioPath || 'assets/audio/birthday wish by sahil.ogg';
+      this.customAudio.src = encodeURI(customPath);
       this.customAudio.preload = 'metadata';
       this.customAudio.volume = this.volume;
 
@@ -244,7 +245,10 @@ class SoundEngine {
       this.customAudio.volume = this.isMuted ? 0 : this.volume;
       this.customAudio.play().then(() => {
         this.isPlayingCustomAudio = true;
+        this.notifyAudioStateChange();
       }).catch(() => {
+        this.isPlayingCustomAudio = false;
+        this.notifyAudioStateChange();
         if (!this.isMuted) this.playBgMusic();
       });
     }
