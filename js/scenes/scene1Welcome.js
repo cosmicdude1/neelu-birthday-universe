@@ -273,8 +273,8 @@ window.renderScene1Welcome = function(container, onNext) {
     if (window.soundEngine) {
       window.soundEngine.getContext();
       window.soundEngine.playSparkle();
-      if (!window.soundEngine.isMuted) {
-        window.soundEngine.startAmbientMusic();
+      if (!window.soundEngine.isMuted && !window.soundEngine.isPlayingBgMusic) {
+        window.soundEngine.playBgMusic();
       }
     }
 

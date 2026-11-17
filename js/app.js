@@ -211,6 +211,11 @@ class NeeluUniverseApp {
         }
       }
     });
+
+    // Sync initial header UI with current autoplay/audio state
+    if (window.soundEngine) {
+      window.soundEngine.notifyAudioStateChange();
+    }
   }
 
   setupGestureControls() {

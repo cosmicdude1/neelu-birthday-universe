@@ -25,6 +25,8 @@ class SoundEngine {
     this.volume = window.NEELU_CONFIG?.audio?.defaultVolume ?? 0.65;
     this.hasUserInteracted = false;
     this.isPlayingBgMusic = false;
+    this.isStartingCustomAudio = false;
+    this.autoplayPending = false;
     this.ambientRunning = false;
     this.ambientTimer = null;
 
@@ -43,37 +45,46 @@ class SoundEngine {
 
     this.initAudioElements();
     this.setupUserInteractionListener();
+    this.setupAutoplayOnLoad();
   }
 
   // ----------------------------------------------------
-  // INITIALIZATION & USER GESTURE HANDLING
+  // INITIALIZATION & AUTOPLAY / USER GESTURE HANDLING
   // ----------------------------------------------------
   initAudioElements() {
     try {
       this.bgMusic = new Audio();
       this.bgMusic.src = this.bgMusicSources[0];
       this.bgMusic.loop = true;
+      this.bgMusic.autoplay = true;
       this.bgMusic.preload = 'auto';
       this.bgMusic.volume = this.volume;
 
-      // Fallback chain if first source fails
+      // Fallback chain if first source fails to load
       this.bgMusic.addEventListener('error', () => {
         if (this.currentSourceIndex < this.bgMusicSources.length - 1) {
           this.currentSourceIndex++;
           this.bgMusic.src = this.bgMusicSources[this.currentSourceIndex];
-          if (this.isPlayingBgMusic && !this.isMuted) {
-            this.bgMusic.play().catch(() => {});
+          if (!this.isMuted && !this.isPlayingCustomAudio && !this.isStartingCustomAudio) {
+            this.attemptAutoplay();
           }
         } else {
-          // If all audio files fail or are missing, fallback to Web Audio celestial pad
-          if (this.isPlayingBgMusic && !this.isMuted) {
+          // Only fallback to Web Audio celestial pad if every audio file failed to load
+          if (!this.isMuted && !this.isPlayingCustomAudio && !this.isStartingCustomAudio) {
             this.startAmbientMusic();
           }
         }
       });
 
+      this.bgMusic.addEventListener('canplay', () => {
+        if (!this.isPlayingBgMusic && !this.isMuted && !this.isPlayingCustomAudio && !this.isStartingCustomAudio) {
+          this.attemptAutoplay();
+        }
+      }, { once: true });
+
       this.bgMusic.addEventListener('play', () => {
         this.isPlayingBgMusic = true;
+        this.autoplayPending = false;
         this.notifyAudioStateChange();
       });
 
@@ -91,8 +102,10 @@ class SoundEngine {
 
       this.customAudio.addEventListener('ended', () => {
         this.isPlayingCustomAudio = false;
+        this.isStartingCustomAudio = false;
+        this.customAudio.currentTime = 0;
         this.notifyAudioStateChange();
-        // Resume background music when voice note finishes
+        // Automatically resume background song once the special voice note finishes
         if (!this.isMuted) {
           this.playBgMusic();
         }
@@ -102,28 +115,87 @@ class SoundEngine {
     }
   }
 
-  // Listen for the first touch/click anywhere to unlock Web Audio & start background music
-  setupUserInteractionListener() {
-    const handleFirstGesture = () => {
-      if (this.hasUserInteracted) return;
-      this.hasUserInteracted = true;
-
-      // Unlock Web Audio context
-      this.getContext();
-
-      // Start background music if not explicitly muted
-      if (!this.isMuted && !this.isPlayingCustomAudio) {
-        this.playBgMusic();
+  // Attempt automatic background playback immediately on load/refresh
+  setupAutoplayOnLoad() {
+    const tryStart = () => {
+      if (!this.isMuted && !this.isPlayingBgMusic && !this.isPlayingCustomAudio && !this.isStartingCustomAudio) {
+        this.attemptAutoplay();
       }
-
-      window.removeEventListener('click', handleFirstGesture);
-      window.removeEventListener('touchstart', handleFirstGesture);
-      window.removeEventListener('keydown', handleFirstGesture);
     };
 
-    window.addEventListener('click', handleFirstGesture, { passive: true });
-    window.addEventListener('touchstart', handleFirstGesture, { passive: true });
-    window.addEventListener('keydown', handleFirstGesture, { passive: true });
+    tryStart();
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', tryStart, { once: true });
+    }
+    window.addEventListener('load', tryStart, { once: true });
+    window.addEventListener('pageshow', tryStart);
+  }
+
+  attemptAutoplay() {
+    if (!this.bgMusic || this.isMuted || this.isPlayingCustomAudio || this.isStartingCustomAudio) return;
+    if (!this.bgMusic.paused) {
+      this.isPlayingBgMusic = true;
+      this.autoplayPending = false;
+      this.notifyAudioStateChange();
+      return;
+    }
+
+    this.bgMusic.volume = this.volume;
+    const playPromise = this.bgMusic.play();
+    if (playPromise && typeof playPromise.then === 'function') {
+      playPromise.then(() => {
+        this.isPlayingBgMusic = true;
+        this.autoplayPending = false;
+        this.notifyAudioStateChange();
+      }).catch(() => {
+        // Browser blocked unmuted autoplay until first user gesture; keep armed for instant start
+        this.autoplayPending = true;
+        this.isPlayingBgMusic = false;
+        this.notifyAudioStateChange();
+      });
+    }
+  }
+
+  // Unlock audio immediately on first gesture if browser blocked initial autoplay
+  setupUserInteractionListener() {
+    const events = ['pointerdown', 'touchstart', 'mousedown', 'click', 'keydown'];
+
+    const removeListeners = () => {
+      events.forEach((evt) => window.removeEventListener(evt, handleFirstGesture, true));
+    };
+
+    const handleFirstGesture = (e) => {
+      this.hasUserInteracted = true;
+      this.getContext();
+
+      // Do not interrupt if the user's very first tap is the Special Voice Note button
+      const target = e.target instanceof Element ? e.target : null;
+      if (target && target.closest('#btnPlayVoiceNote')) {
+        removeListeners();
+        return;
+      }
+
+      if (!this.isMuted && !this.isPlayingCustomAudio && !this.isStartingCustomAudio) {
+        if (this.bgMusic && this.bgMusic.paused) {
+          this.bgMusic.volume = this.volume;
+          this.bgMusic.play().then(() => {
+            this.isPlayingBgMusic = true;
+            this.autoplayPending = false;
+            this.notifyAudioStateChange();
+            removeListeners();
+          }).catch(() => {
+            // Keep listeners attached if gesture wasn't sufficient to unlock
+          });
+          return;
+        }
+      }
+
+      if (this.isPlayingBgMusic) {
+        removeListeners();
+      }
+    };
+
+    events.forEach((evt) => window.addEventListener(evt, handleFirstGesture, { capture: true, passive: true }));
   }
 
   // Lazy Web Audio Context with Master Gain
@@ -147,16 +219,21 @@ class SoundEngine {
   // BACKGROUND MUSIC PLAYBACK CONTROLS
   // ----------------------------------------------------
   playBgMusic() {
-    if (this.isMuted || this.isPlayingCustomAudio) return;
+    if (this.isMuted || this.isPlayingCustomAudio || this.isStartingCustomAudio) return;
 
     if (this.bgMusic) {
       this.bgMusic.volume = this.volume;
       this.bgMusic.play().then(() => {
         this.isPlayingBgMusic = true;
+        this.autoplayPending = false;
         this.notifyAudioStateChange();
-      }).catch(() => {
-        // Fallback to celestial synthesizer if file playback fails
-        this.startAmbientMusic();
+      }).catch((err) => {
+        // Do not replace real background song with synth pad if browser merely blocked autoplay
+        if (err && err.name === 'NotAllowedError') {
+          this.autoplayPending = true;
+        } else {
+          this.startAmbientMusic();
+        }
       });
     } else {
       this.startAmbientMusic();
@@ -193,7 +270,7 @@ class SoundEngine {
       this.bgMusic.volume = this.isMuted ? 0 : this.volume;
       if (this.isMuted) {
         this.bgMusic.pause();
-      } else if (!this.isPlayingCustomAudio && this.hasUserInteracted) {
+      } else if (!this.isPlayingCustomAudio && !this.isStartingCustomAudio) {
         this.bgMusic.play().catch(() => {});
       }
     }
@@ -235,24 +312,31 @@ class SoundEngine {
     this.getContext();
     if (!this.customAudio) return;
 
-    if (this.isPlayingCustomAudio) {
+    if (this.isPlayingCustomAudio || this.isStartingCustomAudio) {
       this.customAudio.pause();
       this.isPlayingCustomAudio = false;
+      this.isStartingCustomAudio = false;
+      this.notifyAudioStateChange();
       if (!this.isMuted) this.playBgMusic();
     } else {
-      // Pause background music so voice note is crystal clear
+      // Pause background song so the special voice note plays clearly
+      this.isStartingCustomAudio = true;
       this.pauseBgMusic();
+      if (this.customAudio.ended) {
+        this.customAudio.currentTime = 0;
+      }
       this.customAudio.volume = this.isMuted ? 0 : this.volume;
       this.customAudio.play().then(() => {
+        this.isStartingCustomAudio = false;
         this.isPlayingCustomAudio = true;
         this.notifyAudioStateChange();
       }).catch(() => {
+        this.isStartingCustomAudio = false;
         this.isPlayingCustomAudio = false;
         this.notifyAudioStateChange();
         if (!this.isMuted) this.playBgMusic();
       });
     }
-    this.notifyAudioStateChange();
   }
 
   notifyAudioStateChange() {
