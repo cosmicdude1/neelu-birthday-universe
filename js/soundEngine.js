@@ -53,12 +53,22 @@ class SoundEngine {
   // ----------------------------------------------------
   initAudioElements() {
     try {
-      this.bgMusic = new Audio();
-      this.bgMusic.src = this.bgMusicSources[0];
+      const existingBgEl = document.getElementById('bgMusicEl');
+      this.bgMusic = existingBgEl || new Audio();
+      if (!existingBgEl) {
+        this.bgMusic.src = this.bgMusicSources[0];
+      }
       this.bgMusic.loop = true;
       this.bgMusic.autoplay = true;
       this.bgMusic.preload = 'auto';
+      this.bgMusic.muted = false;
       this.bgMusic.volume = this.volume;
+
+      // Sync immediately if the browser already started native HTML autoplay
+      if (!this.bgMusic.paused) {
+        this.isPlayingBgMusic = true;
+        this.autoplayPending = false;
+      }
 
       // Fallback chain if first source fails to load
       this.bgMusic.addEventListener('error', () => {
@@ -75,6 +85,12 @@ class SoundEngine {
           }
         }
       });
+
+      this.bgMusic.addEventListener('loadeddata', () => {
+        if (!this.isPlayingBgMusic && !this.isMuted && !this.isPlayingCustomAudio && !this.isStartingCustomAudio) {
+          this.attemptAutoplay();
+        }
+      }, { once: true });
 
       this.bgMusic.addEventListener('canplay', () => {
         if (!this.isPlayingBgMusic && !this.isMuted && !this.isPlayingCustomAudio && !this.isStartingCustomAudio) {
@@ -133,13 +149,14 @@ class SoundEngine {
 
   attemptAutoplay() {
     if (!this.bgMusic || this.isMuted || this.isPlayingCustomAudio || this.isStartingCustomAudio) return;
-    if (!this.bgMusic.paused) {
+    if (!this.bgMusic.paused && !this.bgMusic.muted) {
       this.isPlayingBgMusic = true;
       this.autoplayPending = false;
       this.notifyAudioStateChange();
       return;
     }
 
+    this.bgMusic.muted = false;
     this.bgMusic.volume = this.volume;
     const playPromise = this.bgMusic.play();
     if (playPromise && typeof playPromise.then === 'function') {
@@ -148,17 +165,32 @@ class SoundEngine {
         this.autoplayPending = false;
         this.notifyAudioStateChange();
       }).catch(() => {
-        // Browser blocked unmuted autoplay until first user gesture; keep armed for instant start
-        this.autoplayPending = true;
-        this.isPlayingBgMusic = false;
-        this.notifyAudioStateChange();
+        // Fallback: start muted so playback pipeline is warm, then immediately unmute on first gesture
+        this.bgMusic.muted = true;
+        this.bgMusic.play().then(() => {
+          // Try immediate unmute (works on browsers that allow unmuting once started)
+          this.bgMusic.muted = false;
+          if (!this.bgMusic.paused) {
+            this.isPlayingBgMusic = true;
+            this.autoplayPending = false;
+          } else {
+            this.autoplayPending = true;
+            this.isPlayingBgMusic = false;
+          }
+          this.notifyAudioStateChange();
+        }).catch(() => {
+          this.bgMusic.muted = false;
+          this.autoplayPending = true;
+          this.isPlayingBgMusic = false;
+          this.notifyAudioStateChange();
+        });
       });
     }
   }
 
   // Unlock audio immediately on first gesture if browser blocked initial autoplay
   setupUserInteractionListener() {
-    const events = ['pointerdown', 'touchstart', 'mousedown', 'click', 'keydown'];
+    const events = ['pointerdown', 'touchstart', 'touchend', 'mousedown', 'click', 'keydown', 'wheel'];
 
     const removeListeners = () => {
       events.forEach((evt) => window.removeEventListener(evt, handleFirstGesture, true));
@@ -176,7 +208,8 @@ class SoundEngine {
       }
 
       if (!this.isMuted && !this.isPlayingCustomAudio && !this.isStartingCustomAudio) {
-        if (this.bgMusic && this.bgMusic.paused) {
+        if (this.bgMusic && (this.bgMusic.paused || this.bgMusic.muted)) {
+          this.bgMusic.muted = false;
           this.bgMusic.volume = this.volume;
           this.bgMusic.play().then(() => {
             this.isPlayingBgMusic = true;
@@ -190,7 +223,7 @@ class SoundEngine {
         }
       }
 
-      if (this.isPlayingBgMusic) {
+      if (this.isPlayingBgMusic && (!this.bgMusic || !this.bgMusic.muted)) {
         removeListeners();
       }
     };
@@ -222,6 +255,7 @@ class SoundEngine {
     if (this.isMuted || this.isPlayingCustomAudio || this.isStartingCustomAudio) return;
 
     if (this.bgMusic) {
+      this.bgMusic.muted = false;
       this.bgMusic.volume = this.volume;
       this.bgMusic.play().then(() => {
         this.isPlayingBgMusic = true;
